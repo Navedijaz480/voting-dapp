@@ -50,7 +50,7 @@ router.route("/createVoter").post(createVoter)
 router.route("/getVoterDetails").get(getVoterDetails)
 router.route("/searchCandidate").get(searchCandidate)
 router.route("/getReward").post(getReward)
-router.route("/getVoterInformation").post(getVoterInformation)
+// router.route("/getVoterInformation").post(getVoterInformation)
 
 
 

@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const voter = require("../models/voter");
-
+const moment = require("moment");
+const candidates = require("../models/candidates");
 const Web3 = require("web3");
 const ethUtil = require("ethereumjs-util");
 const ethereum_address = require("ethereum-address");
@@ -74,7 +75,6 @@ exports.getReward = async (candidateAddress) => {
                                 res.status(200).json({ error: `Bad Request ${err}` });
 
 
-
                             }
                         }
                     );
@@ -98,66 +98,83 @@ exports.getReward = async (candidateAddress) => {
     // });
 
 }
-// module.exports = getReward;
-async function checkVotesAndCallReward(candidateAddress) {
-    try {
+
+async function getCandidates() {
+  try {
+      const currentTime = moment().toISOString(); // Get current time in ISO format
+      console.log(currentTime);
+      const result = await candidates.find({
+          endTime: { $lt: currentTime },
+          status: 'Active'
+      });
+      console.log(result);
+
+      if (result.length > 0) {
+        console.log(`Found ${result.length} candidates. Processing...`);
+        for (const candidate of result) {
+            await checkVotesAndCallReward(candidate);
+        }
+    } else {
+        console.log('No active candidates found.');
+    }
+} catch (err) {
+    console.error(err);
+}
+}
+
+async function checkVotesAndCallReward(candidate) {
+  try {
       const data = await voter.aggregate([
-        {
-          $match: { candidateAddress: candidateAddress },
-        },
-        {
-          $group: {
-            _id: '$vote',
-            count: { $sum: 1 },
+          {
+              $match: { candidateAddress: candidate.useraddress },
           },
-        },
+          {
+              $group: {
+                  _id: '$vote',
+                  count: { $sum: 1 },
+              },
+          },
       ]);
-  
+
       let forCount = 0;
       let againstCount = 0;
-  
+
       data.forEach((item) => {
-        if (item._id === 'For') {
-          forCount = item.count;
-        } else if (item._id === 'Against') {
-          againstCount = item.count;
-        }
+          if (item._id === 'For') {
+              forCount = item.count;
+          } else if (item._id === 'Against') {
+              againstCount = item.count;
+          }
       });
-  
+
       if (forCount > againstCount) {
-        await exports.getReward(candidateAddress);
+        await candidates.updateOne(
+          { useraddress: candidate.useraddress },
+          {
+              status: 'Closed',
+              description: 'DAO Member'
+          }
+      );
+          await exports.getReward(candidate.useraddress);
       } else {
-        console.log('Votes did not meet the condition.');
+        await candidates.updateOne(
+          { useraddress: candidate.useraddress },
+          {
+              status: 'Closed',
+              description: 'Refused Member'
+          }
+      );
+
+          console.log('Votes did not meet the condition.');
       }
-    } catch (error) {
+  } catch (error) {
       console.error('Error while checking votes and calling getReward:', error);
-    }
   }
-  
-  // Your function to be called manually
-  exports.getVoterInformation = async (req, res) => {
-    try {
-      let { candidateAddress } = req.query;
-  
-      // Schedule the checkVotesAndCallReward function to run after one hour
-      setTimeout(() => {
-        checkVotesAndCallReward(candidateAddress);
-      }, 60 * 1000); // 1 hour in milliseconds
-  
-      // Respond immediately to the request
-      res.status(200).send({
-        message: 'Task scheduled to check votes in one hour.',
-        success: true,
-      });
-    } catch (error) {
-      console.error('Error while scheduling the task', error);
-      res.status(500).send({
-        message: 'Error while scheduling the task',
-        success: false,
-      });
-    }
-  };
-  
-  // Route to manually start the vote checking and scheduling
-//   app.get('/start-task', exports.getVoterDetails);
-  
+}
+
+
+// Schedule the cron job to run every two minutes
+cron.schedule('*/2 * * * *', async () => {
+  console.log('Running cron job...');
+  await getCandidates();
+});

@@ -19,6 +19,9 @@ const schema = mongoose.Schema({
     company_name1: {
         type: String,
     },
+    endTime: {
+        type: String,
+    },
     email: {
         type: String,
     },
